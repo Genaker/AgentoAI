@@ -15,7 +15,7 @@ class CheckConfig extends Command
 
     public function __construct(
         ScopeConfigInterface $scopeConfig,
-        string $name = null
+        ?string $name = null
     ) {
         parent::__construct($name);
         $this->scopeConfig = $scopeConfig;
@@ -37,7 +37,7 @@ class CheckConfig extends Command
         $output->writeln('MSPI API Key Configuration:');
         $output->writeln('Path: ' . self::XML_PATH_MSPI_API_KEY);
         $output->writeln('Value: ' . ($key ? $key : 'not set'));
-        
+
         return 0;
     }
-} 
+}
