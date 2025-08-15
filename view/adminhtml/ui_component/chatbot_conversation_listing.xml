@@ -36,6 +36,7 @@
             </item>
         </argument>
     </dataSource>
+
     <listingToolbar name="listing_top">
         <argument name="data" xsi:type="array">
             <item name="config" xsi:type="array">
@@ -170,6 +171,33 @@
                     <item name="resizeEnabled" xsi:type="boolean">false</item>
                     <item name="resizeDefaultWidth" xsi:type="string">107</item>
                     <item name="indexField" xsi:type="string">conversation_id</item>
+                </item>
+                <item name="action_list" xsi:type="array">
+                    <item name="view" xsi:type="array">
+                        <item name="label" xsi:type="string" translate="true">View</item>
+                        <item name="path" xsi:type="string">magentomcpai/conversation/view</item>
+                        <item name="params" xsi:type="array">
+                            <item name="id" xsi:type="string">conversation_id</item>
+                        </item>
+                    </item>
+                    <item name="send_transcript" xsi:type="array">
+                        <item name="label" xsi:type="string" translate="true">Send Transcript</item>
+                        <item name="path" xsi:type="string">magentomcpai/conversation/send</item>
+                        <item name="params" xsi:type="array">
+                            <item name="id" xsi:type="string">conversation_id</item>
+                        </item>
+                    </item>
+                    <item name="delete" xsi:type="array">
+                        <item name="label" xsi:type="string" translate="true">Delete</item>
+                        <item name="path" xsi:type="string">magentomcpai/conversation/delete</item>
+                        <item name="params" xsi:type="array">
+                            <item name="id" xsi:type="string">conversation_id</item>
+                        </item>
+                        <item name="confirm" xsi:type="array">
+                            <item name="title" xsi:type="string" translate="true">Delete Conversation</item>
+                            <item name="message" xsi:type="string" translate="true">Are you sure you want to delete this conversation?</item>
+                        </item>
+                    </item>
                 </item>
             </argument>
         </actionsColumn>

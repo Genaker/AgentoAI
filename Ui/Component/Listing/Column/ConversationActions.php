@@ -40,42 +40,66 @@ class ConversationActions extends Column
     public function prepareDataSource(array $dataSource)
     {
         if (isset($dataSource['data']['items'])) {
-            foreach ($dataSource['data']['items'] as & $item) {
-                if (isset($item['conversation_id'])) {
-                    $item[$this->getData('name')] = [
-                        'view' => [
-                            'href' => $this->urlBuilder->getUrl(
-                                'magentomcpai/conversation/view',
-                                ['id' => $item['conversation_id']]
-                            ),
-                            'label' => __('View'),
-                            'hidden' => false,
-                        ],
-                        'send_transcript' => [
-                            'href' => $this->urlBuilder->getUrl(
-                                'magentomcpai/conversation/send',
-                                ['id' => $item['conversation_id']]
-                            ),
-                            'label' => __('Send Transcript'),
-                            'hidden' => (bool)$item['transcript_sent'],
-                        ],
-                        'delete' => [
-                            'href' => $this->urlBuilder->getUrl(
-                                'magentomcpai/conversation/delete',
-                                ['id' => $item['conversation_id']]
-                            ),
-                            'label' => __('Delete'),
-                            'confirm' => [
-                                'title' => __('Delete Conversation'),
-                                'message' => __('Are you sure you want to delete this conversation?')
-                            ],
-                            'hidden' => false,
-                        ]
+            foreach ($dataSource['data']['items'] as &$item) {
+                $actions = $this->getData('action_list');
+                if (!is_array($actions)) {
+                    continue;
+                }
+
+                foreach ($actions as $key => $action) {
+                    if (!$this->isValidAction($action)) {
+                        continue;
+                    }
+
+                    $params = $this->prepareActionParams($action['params'], $item);
+
+                    $actionData = [
+                        'href' => $this->urlBuilder->getUrl($action['path'], $params),
+                        'label' => $action['label'],
+                        'hidden' => false,
                     ];
+
+                    if (isset($action['confirm'])) {
+                        $actionData['confirm'] = $action['confirm'];
+                    }
+
+                    $item[$this->getData('name')][$key] = $actionData;
                 }
             }
         }
 
         return $dataSource;
+    }
+
+
+    /**
+     * Validate action configuration
+     *
+     * @param array $action
+     * @return bool
+     */
+    private function isValidAction(array $action): bool
+    {
+        return isset($action['path'], $action['label'], $action['params'])
+            && is_array($action['params']);
+    }
+
+    /**
+     * Prepare action parameters
+     *
+     * @param array $params
+     * @param array $item
+     * @return array
+     */
+    private function prepareActionParams(array $params, array $item): array
+    {
+        $preparedParams = [];
+        foreach ($params as $field => $param) {
+            if (isset($item[$param])) {
+                $preparedParams[$field] = $item[$param];
+            }
+        }
+
+        return $preparedParams;
     }
 }

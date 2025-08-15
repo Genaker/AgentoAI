@@ -66,21 +66,24 @@ class ConversationDataProvider extends DataProvider
      */
     public function getData()
     {
-        if (isset($this->loadedData)) {
-            return $this->loadedData;
-        }
-        $items = $this->getCollection()->getItems();
-        $this->loadedData = [];
-        foreach ($items as $conversation) {
+        $collection = $this->getCollection();
+
+        $items = [];
+        foreach ($collection->getItems() as $conversation) {
             // Add the count of messages
             $messages = json_decode($conversation->getConversationData(), true);
             $messageCount = !empty($messages['messages']) ? count($messages['messages']) : 0;
             $conversation->setData('message_count', $messageCount);
-            
-            $this->loadedData[$conversation->getId()] = $conversation->getData();
+
+            $items[] = $conversation->getData();
         }
-        
-        return $this->loadedData;
+
+        $result = [
+            'items' => $items,
+            'totalRecords' => $collection->getSize()
+        ];
+
+        return $result;
     }
 
     /**
@@ -92,7 +95,7 @@ class ConversationDataProvider extends DataProvider
     {
         return $this->createCollection();
     }
-    
+
     /**
      * Create collection instance
      *
@@ -106,4 +109,17 @@ class ConversationDataProvider extends DataProvider
         }
         return $collection;
     }
+
+    /**
+     * Add filter
+     *
+     * @param Filter $filter
+     * @return void
+     */
+    public function addFilter(Filter $filter)
+    {
+        // Handle custom filters here if needed
+        parent::addFilter($filter);
+    }
+
 }
