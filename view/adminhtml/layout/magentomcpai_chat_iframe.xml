@@ -21,10 +21,11 @@
         <referenceContainer name="footer" remove="true"/>
 
         <!-- Define our own basic content container -->
-        <container name="root" htmlTag="div" cacheable="false" htmlClass="mcpai-iframe-root">
+        <container name="root" htmlTag="div" htmlClass="mcpai-iframe-root">
             <block name="magentomcpai_iframe" 
-                   template="Genaker_MagentoMcpAi::iframe.phtml" 
-                   class="Genaker\MagentoMcpAi\Block\Adminhtml\Chat"/>
+                cacheable="false"
+                template="Genaker_MagentoMcpAi::iframe.phtml"
+                class="Genaker\MagentoMcpAi\Block\Adminhtml\Chat"/>
         </container>
     </body>
 </page> 
