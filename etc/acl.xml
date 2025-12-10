@@ -6,6 +6,7 @@
                 <resource id="Magento_Backend::content">
                     <resource id="Genaker_MagentoMcpAi::ai_assistant" title="AI Assistant" sortOrder="100">
                         <resource id="Genaker_MagentoMcpAi::mcpai" title="MCP AI Assistant" sortOrder="10"/>
+                        <resource id="Genaker_MagentoMcpAi::mcpai_dashboard_page" title="MCP AI Assistant Dashboard Page" sortOrder="20"/>
                         <resource id="Genaker_MagentoMcpAi::product_chat" title="Product Chat" sortOrder="30"/>
                     </resource>
                 </resource>

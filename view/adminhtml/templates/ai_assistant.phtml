@@ -1,3 +1,10 @@
+<?php
+/** @var Genaker\MagentoMcpAi\Block\Adminhtml\AIAssistant $block */
+
+if (!$block->isAllowed()) {
+    return;
+}
+?>
 <style>
 .message.message:before {
     position: absolute;
