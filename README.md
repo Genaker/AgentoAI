@@ -2,6 +2,11 @@
 
 A powerful AI assistant for Magento 2 that helps you interact with your store's data using natural language queries.
 
+## The Full AgentoAI bundle includes the following modules:
+1. Agento AI Core
+2. Magento MCP server for store owners and developers
+3. Magento AI Image and Video Generation Solution
+
 ## Features
 
 ### 1. Natural Language to SQL
