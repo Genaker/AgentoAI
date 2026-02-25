@@ -4,7 +4,7 @@ namespace Genaker\MagentoMcpAi\Model;
 use Genaker\MagentoMcpAi\Api\CustomerChatbotInterface;
 use Genaker\MagentoMcpAi\Api\Data\ChatResponseInterface;
 use Genaker\MagentoMcpAi\Api\Data\ChatResponseInterfaceFactory;
-use Genaker\MagentoMcpAi\Model\Service\OpenAiService;
+use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
 use Magento\Framework\Exception\LocalizedException;
@@ -23,9 +23,9 @@ class CustomerChatbot implements CustomerChatbotInterface
     private $scopeConfig;
     
     /**
-     * @var OpenAiService
+     * @var AIServiceInterface
      */
-    private $openAiService;
+    private $aiService;
     
     /**
      * @var LoggerInterface
@@ -49,7 +49,7 @@ class CustomerChatbot implements CustomerChatbotInterface
 
     /**
      * @param ScopeConfigInterface $scopeConfig
-     * @param OpenAiService $openAiService
+     * @param AIServiceInterface $aiService
      * @param LoggerInterface $logger
      * @param CacheInterface $cache
      * @param Json $json
@@ -57,14 +57,14 @@ class CustomerChatbot implements CustomerChatbotInterface
      */
     public function __construct(
         ScopeConfigInterface $scopeConfig,
-        OpenAiService $openAiService,
+        AIServiceInterface $aiService,
         LoggerInterface $logger,
         CacheInterface $cache,
         Json $json,
         ChatResponseInterfaceFactory $chatResponseFactory
     ) {
         $this->scopeConfig = $scopeConfig;
-        $this->openAiService = $openAiService;
+        $this->aiService = $aiService;
         $this->logger = $logger;
         $this->cache = $cache;
         $this->json = $json;
@@ -240,13 +240,20 @@ class CustomerChatbot implements CustomerChatbotInterface
             'content' => $query
         ];
         
-        $response = $this->openAiService->sendChatRequest(
+        // Extract the last user message as the main message string
+        // sendChatRequest expects: (string $message, array $messages = [], int $maxTokens = 2000, float $temperature = 0.7, array $tools = [])
+        $lastUserMessage = $query;
+        $maxTokens = 2000;
+        $temperature = 0.7;
+        
+        $response = $this->aiService->sendChatRequest(
+            $lastUserMessage,
             $messages,
-            $model,
-            $apiKey
+            $maxTokens,
+            $temperature
         );
         
-        return $response['content'];
+        return $response['message'] ?? '';
     }
     
     /**

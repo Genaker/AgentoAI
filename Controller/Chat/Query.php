@@ -7,7 +7,7 @@ use Magento\Framework\Controller\Result\JsonFactory;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
-use Genaker\MagentoMcpAi\Model\Service\OpenAiService;
+use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Psr\Log\LoggerInterface;
 use Magento\Framework\App\CacheInterface;
 use Magento\Framework\Serialize\Serializer\Json;
@@ -36,7 +36,7 @@ class Query implements HttpPostActionInterface
     private $scopeConfig;
     
     /**
-     * @var OpenAiService
+     * @var AIServiceInterface
      */
     private $openAiService;
     
@@ -79,7 +79,7 @@ class Query implements HttpPostActionInterface
      * @param RequestInterface $request
      * @param JsonFactory $resultJsonFactory
      * @param ScopeConfigInterface $scopeConfig
-     * @param OpenAiService $openAiService
+     * @param AIServiceInterface $openAiService
      * @param LoggerInterface $logger
      * @param CacheInterface $cache
      * @param Json $json
@@ -92,7 +92,7 @@ class Query implements HttpPostActionInterface
         RequestInterface $request,
         JsonFactory $resultJsonFactory,
         ScopeConfigInterface $scopeConfig,
-        OpenAiService $openAiService,
+        AIServiceInterface $openAiService,
         LoggerInterface $logger,
         CacheInterface $cache,
         Json $json,
@@ -341,13 +341,20 @@ class Query implements HttpPostActionInterface
                 'content' => $query
             ];
             
+            // Extract the last user message as the main message string
+            // sendChatRequest expects: (string $message, array $messages = [], int $maxTokens = 2000, float $temperature = 0.7, array $tools = [])
+            $lastUserMessage = $query;
+            $maxTokens = 2000;
+            $temperature = 0.7;
+            
             $response = $this->openAiService->sendChatRequest(
+                $lastUserMessage,
                 $messages,
-                'gpt-5-nano',
-                $apiKey
+                $maxTokens,
+                $temperature
             );
             
-            return $response['content'];
+            return $response['message'] ?? '';
         } catch (\Exception $e) {
             $this->logger->error('Chatbot error: ' . $e->getMessage());
             throw new \Exception('An error occurred while processing your request.: ' . $e->getMessage());

@@ -28,7 +28,8 @@
     <type name="Magento\Framework\Console\CommandList">
         <arguments>
             <argument name="commands" xsi:type="array">
-                <item name="genaker_mcpai_check_config" xsi:type="object">Genaker\MagentoMcpAi\Console\Command\CheckConfig</item>
+                <item name="genaker_magento_llm" xsi:type="object">Genaker\MagentoMcpAi\Console\Command\LlmAnalyzer</item>
+                <item name="genaker_menu_generate_md" xsi:type="object">Genaker\MagentoMcpAi\Console\Command\GenerateMenuMd</item>
             </argument>
         </arguments>
     </type>
@@ -43,11 +44,121 @@
             <argument name="jsonHelper" xsi:type="object">Magento\Framework\Json\Helper\Data</argument>
         </arguments>
     </type>
+    
+    <!-- Multi-LLM Service Configuration -->
+    <type name="Genaker\MagentoMcpAi\Model\Service\MultiLLMService">
+        <arguments>
+            <argument name="scopeConfig" xsi:type="object">Magento\Framework\App\Config\ScopeConfigInterface</argument>
+            <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
+        </arguments>
+    </type>
+
+    <!-- AI Service Interface - Use MgentoAIService Implementation -->
+    <preference for="Genaker\MagentoMcpAi\Api\Service\AIServiceInterface" type="Genaker\MagentoMcpAi\Model\Service\MgentoAIService" />
+
+    <!-- Generic AI Service Configuration (wrapper around MultiLLMService) -->
+    <type name="Genaker\MagentoMcpAi\Model\Service\MgentoAIService">
+        <arguments>
+            <argument name="curl" xsi:type="object">Magento\Framework\HTTP\Client\Curl</argument>
+            <argument name="jsonHelper" xsi:type="object">Magento\Framework\Json\Helper\Data</argument>
+            <argument name="file" xsi:type="object">Magento\Framework\Filesystem\Io\File</argument>
+            <argument name="scopeConfig" xsi:type="object">Magento\Framework\App\Config\ScopeConfigInterface</argument>
+            <argument name="multiLLMService" xsi:type="object">Genaker\MagentoMcpAi\Model\Service\MultiLLMService</argument>
+            <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
+        </arguments>
+    </type>
 
     <preference for="Genaker\MagentoMcpAi\Api\MenuAIAPIInterface" type="Genaker\MagentoMcpAi\Model\MenuAIAPI" />
 
     <preference for="Genaker\MagentoMcpAi\Api\CustomerChatbotInterface" type="Genaker\MagentoMcpAi\Model\CustomerChatbot" />
 
+    <!-- LLM Analyzer Command Configuration -->
+    <type name="Genaker\MagentoMcpAi\Console\Command\LlmAnalyzer">
+        <arguments>
+            <argument name="userInteractionContext" xsi:type="object">Genaker\MagentoMcpAi\Model\Service\UserInteractionContext</argument>
+        </arguments>
+    </type>
+
+    <!-- CLI Chat Service Configuration -->
+    <type name="Genaker\MagentoMcpAi\Model\Service\CliChatWithToolsService">
+        <arguments>
+            <argument name="aiService" xsi:type="object">Genaker\MagentoMcpAi\Api\Service\AIServiceInterface</argument>
+            <argument name="toolRegistry" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\Registry</argument>
+            <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
+        </arguments>
+    </type>
+
     <preference for="Magento\Framework\Phrase" type="Genaker\MagentoMcpAi\Framework\AiPhrase" />
+
+    <!-- Database Tool Registry -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\Registry">
+        <arguments>
+            <argument name="tools" xsi:type="array">
+                <!-- Default tools - can be extended by other modules -->
+                <item name="execute_sql_query" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\ExecuteSqlQuery</item>
+                <item name="describe_table" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\DescribeTable</item>
+                <item name="grep_files" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\GrepTool</item>
+                <item name="read_file" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\ReadFileTool</item>
+                <!-- Analysis tools -->
+                <item name="get_magento_info" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\GetMagentoInfo</item>
+                <item name="run_magento_cli" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\RunMagentoCli</item>
+                <item name="ask_user" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\AskUserTool</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- Database Tool: Execute SQL Query -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\ExecuteSqlQuery">
+        <arguments>
+            <argument name="resourceConnection" xsi:type="object">Magento\Framework\App\ResourceConnection</argument>
+        </arguments>
+    </type>
+
+    <!-- Database Tool: Describe Table -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\DescribeTable">
+        <arguments>
+            <argument name="resourceConnection" xsi:type="object">Magento\Framework\App\ResourceConnection</argument>
+        </arguments>
+    </type>
+
+    <!-- File Tool: Grep Files -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\GrepTool">
+        <arguments>
+            <argument name="directoryList" xsi:type="object">Magento\Framework\Filesystem\DirectoryList</argument>
+            <argument name="fileIo" xsi:type="object">Magento\Framework\Filesystem\Io\File</argument>
+        </arguments>
+    </type>
+
+    <!-- File Tool: Read File -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\ReadFileTool">
+        <arguments>
+            <argument name="directoryList" xsi:type="object">Magento\Framework\Filesystem\DirectoryList</argument>
+            <argument name="fileIo" xsi:type="object">Magento\Framework\Filesystem\Io\File</argument>
+        </arguments>
+    </type>
+
+    <!-- Analysis Tool: Get Magento Info -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\GetMagentoInfo">
+        <arguments>
+            <argument name="resourceConnection" xsi:type="object">Magento\Framework\App\ResourceConnection</argument>
+            <argument name="productMetadata" xsi:type="object">Magento\Framework\App\ProductMetadataInterface</argument>
+            <argument name="directoryList" xsi:type="object">Magento\Framework\Filesystem\DirectoryList</argument>
+        </arguments>
+    </type>
+
+    <!-- Analysis Tool: Run Magento CLI -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\RunMagentoCli">
+        <arguments>
+            <argument name="directoryList" xsi:type="object">Magento\Framework\Filesystem\DirectoryList</argument>
+        </arguments>
+    </type>
+
+    <!-- Analysis Tool: Ask User (interactive operator questions) -->
+    <!-- UserInteractionContext is a shared singleton; the CLI command sets a callback on it -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\AskUserTool">
+        <arguments>
+            <argument name="context" xsi:type="object">Genaker\MagentoMcpAi\Model\Service\UserInteractionContext</argument>
+        </arguments>
+    </type>
 
 </config>

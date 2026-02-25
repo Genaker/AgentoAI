@@ -53,7 +53,44 @@ A powerful AI assistant for Magento 2 that helps you interact with your store's 
 - Extensible design
 - Easy to customize and extend
 
-### 7. Customer Service Chatbot
+### 7. CLI AI Agent (`genaker:agento:llm`)
+
+A dual-mode command-line AI agent for operators and developers.
+
+**Chat / Query mode** — ask natural language questions answered by the AI using SQL and file tools:
+```bash
+bin/magento genaker:agento:llm "How many customers registered this month?"
+bin/magento genaker:agento:llm   # interactive REPL
+```
+
+**Analyzer mode** — autonomous ReAct agent that investigates the full installation and produces a structured report (security / performance / config / DB):
+```bash
+bin/magento genaker:agento:llm --focus=security
+bin/magento genaker:agento:llm --focus=all --report=/tmp/audit.txt
+```
+
+**Available tools:** `get_magento_info`, `execute_sql_query`, `describe_table`, `grep_files`, `read_file`, `run_magento_cli`, `ask_user` (bidirectional — AI can ask the operator questions mid-analysis).
+
+**Documentation:**
+- [MAGENTO_AI_QUERY_ANALYZER.md](MAGENTO_AI_QUERY_ANALYZER.md) — CLI modes, options, analyzer focus, report format
+- [TOOLS_AND_LLM.md](TOOLS_AND_LLM.md) — How tools work with the LLM: ReAct loop, tool call resolution, conversation flow, all tools in detail
+- [DATABASE_TOOLS_DOCUMENTATION.md](DATABASE_TOOLS_DOCUMENTATION.md) — Tool API reference, custom tools, examples
+
+### Tools Overview
+
+| Tool | Purpose |
+|------|---------|
+| `get_magento_info` | Snapshot: version, PHP, modules, DB size, product/order/customer counts |
+| `execute_sql_query` | Run SELECT/DESCRIBE/SHOW against Magento DB (auto-limited, safe by default) |
+| `describe_table` | Get table structure before querying |
+| `grep_files` | Search codebase for patterns (regex) |
+| `read_file` | Read file contents with optional line range |
+| `run_magento_cli` | Run whitelisted commands: `indexer:status`, `cache:status`, `module:status`, etc. |
+| `ask_user` | Ask the operator a question mid-analysis (interactive only) |
+
+The AI uses a **ReAct** (Reasoning + Acting) loop: it calls tools to gather data, then synthesizes a final answer. See [TOOLS_AND_LLM.md](TOOLS_AND_LLM.md) for the full flow.
+
+### 8. Customer Service Chatbot
 - AI-powered customer-facing chatbot for your storefront
 - Dual theme support (Hyva & Standard Magento)
 - Response caching for common questions

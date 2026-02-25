@@ -220,6 +220,7 @@ class Model implements ArrayInterface
 
         // Define model families
         $families = [
+            'gpt-5-nano' => 'gpt-5-nano',
             'gpt-4o' => 'gpt-4o',
             'gpt-4-turbo' => 'gpt-4-turbo', 
             'gpt-4' => 'gpt-4',
@@ -332,6 +333,7 @@ class Model implements ArrayInterface
     private function compareModelPriority($familyA, $familyB)
     {
         $priority = [
+            'gpt-5-nano' => 75,
             'gpt-4o' => 100,
             'gpt-4-turbo' => 90,
             'gpt-4' => 80,
@@ -403,6 +405,7 @@ class Model implements ArrayInterface
             'gpt-4o' => 'GPT-4o',
             'gpt-4o-mini' => 'GPT-4o Mini',
             'gpt-5' => 'GPT-5 (272K)',
+            'gpt-5-nano' => 'GPT-5 Nano',
         ];
         /*
         GPT-5 Mini
@@ -440,6 +443,7 @@ Output: $0.40 / 1M tokens
     private function getStaticModels()
     {
         return [
+            ['value' => 'gpt-5-nano', 'label' => __('GPT-5 Nano (Default, Cheapest)')],
             ['value' => 'gpt-4o', 'label' => __('GPT-4o (Latest)')],
             ['value' => 'gpt-4o-mini', 'label' => __('GPT-4o Mini (Latest)')],
             ['value' => 'gpt-4-turbo', 'label' => __('GPT-4 Turbo (Latest)')],

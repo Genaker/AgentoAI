@@ -6,7 +6,7 @@ use Magento\Backend\App\Action\Context;
 use Magento\Framework\View\Result\LayoutFactory;
 use Magento\Framework\Controller\Result\JsonFactory;
 use Genaker\MagentoMcpAi\Model\MenuAIAPI;
-use Genaker\MagentoMcpAi\Model\Service\OpenAiService;
+use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
 
@@ -26,7 +26,7 @@ class Query extends Action
     protected $menuAIAPI;
 
     /**
-     * @var OpenAiService
+     * @var AIServiceInterface
      */
     protected $openAiService;
 
@@ -50,7 +50,7 @@ class Query extends Action
         Context $context,
         JsonFactory $resultJsonFactory,
         MenuAIAPI $menuAIAPI,
-        OpenAiService $openAiService,
+        AIServiceInterface $openAiService,
         ScopeConfigInterface $scopeConfig
     ) {
         parent::__construct($context);

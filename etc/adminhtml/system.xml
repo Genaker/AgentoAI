@@ -59,6 +59,16 @@
                     <label>AI API Domain</label>
                     <comment>Enter the base domain for the AI API (e.g. https://api.openai.com)</comment>
                 </field>
+                <field id="debug_mode" translate="label" type="select" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Debug Mode</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>When enabled, logs detailed debug information for every AI service request, response, and processing step. Logs are written to var/log/system.log. Disabled by default.</comment>
+                </field>
+                <field id="max_iterations" translate="label comment" type="text" sortOrder="110" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Max Iterations (CLI)</label>
+                    <comment>Maximum number of iterations for CLI LLM command tool calling (default: 5)</comment>
+                    <validate>validate-number validate-greater-than-zero</validate>
+                </field>
             </group>
             <group id="chatbot" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
                 <label>Customer Chatbot Configuration</label>
@@ -141,6 +151,14 @@
                     <label>Inactive Timeout (minutes)</label>
                     <comment>Number of minutes of inactivity before a chat is considered closed and transcript sent</comment>
                     <validate>validate-number validate-greater-than-zero</validate>
+                </field>
+            </group>
+            <group id="menu" translate="label" type="text" sortOrder="25" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Menu AI (Admin Assistant)</label>
+                <field id="filter_enabled" translate="label" type="select" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                    <label>Enable Menu Filtering</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment><![CDATA[When disabled (default): send full menu.md to AI. When enabled: filter menu by query keywords to reduce context size. Use filtering for smaller context models.]]></comment>
                 </field>
             </group>
             <group id="security" translate="label" type="text" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">

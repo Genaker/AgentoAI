@@ -11,7 +11,7 @@ use Genaker\MagentoMcpAi\Model\Validator\QueryValidator;
 use Magento\Framework\App\CacheInterface;
 use Magento\Framework\App\DeploymentConfig;
 use Magento\Framework\Session\SessionManagerInterface;
-use Genaker\MagentoMcpAi\Model\Service\OpenAiService;
+use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Psr\Log\LoggerInterface;
 use Zend_Db_Statement_Exception;
 
@@ -42,7 +42,7 @@ class McpAi implements McpAiInterface
     protected $customConnection = null;
     protected $deploymentConfig;
     protected $sessionManager;
-    protected $openAiService;
+    protected $aiService;
     protected $logger;
 
     public function __construct(
@@ -54,7 +54,7 @@ class McpAi implements McpAiInterface
         CacheInterface $cache,
         DeploymentConfig $deploymentConfig,
         SessionManagerInterface $sessionManager,
-        OpenAiService $openAiService,
+        AIServiceInterface $aiService,
         LoggerInterface $logger
     ) {
         $this->scopeConfig = $scopeConfig;
@@ -65,7 +65,7 @@ class McpAi implements McpAiInterface
         $this->cache = $cache;
         $this->deploymentConfig = $deploymentConfig;
         $this->sessionManager = $sessionManager;
-        $this->openAiService = $openAiService;
+        $this->aiService = $aiService;
         $this->logger = $logger;
     }
 
@@ -255,15 +255,29 @@ class McpAi implements McpAiInterface
                 ];
             }
 
-            // Use OpenAiService to make the API call
-            $response = $this->openAiService->sendChatRequest(
+            // Extract the last user message as the main message string
+            // sendChatRequest expects: (string $message, array $messages = [], int $maxTokens = 2000, float $temperature = 0.7, array $tools = [])
+            $lastUserMessage = $prompt;
+            $maxTokens = 2000;
+            $temperature = 0.7;
+
+            // Use AIServiceInterface to make the API call
+            $response = $this->aiService->sendChatRequest(
+                $lastUserMessage,
                 $messages,
-                $model,
-                $apiKey
+                $maxTokens,
+                $temperature
             );
 
-            $content = $response['content'];
-            $tokenUsage = $response['usage'];
+            $content = $response['message'] ?? '';
+            
+            // Normalize token usage structure
+            $tokens = $response['tokens'] ?? [];
+            $tokenUsage = [
+                'prompt_tokens' => $tokens['input'] ?? $tokens['prompt_tokens'] ?? 0,
+                'completion_tokens' => $tokens['output'] ?? $tokens['completion_tokens'] ?? 0,
+                'total_tokens' => $tokens['total'] ?? $tokens['total_tokens'] ?? 0
+            ];
 
             // Add assistant response to history with role
             $this->addToHistory($sessionId, 'assistant', $content);

@@ -3,7 +3,7 @@ namespace Genaker\MagentoMcpAi\Service;
 
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Exception\LocalizedException;
-use Genaker\MagentoMcpAi\Model\Service\OpenAiService;
+use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 
 class LLM
 {
@@ -21,7 +21,7 @@ class LLM
      */
     public function __construct(
         ScopeConfigInterface $scopeConfig,
-        OpenAiService $aiService
+        AIServiceInterface $aiService
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->aiService = $aiService;
@@ -57,23 +57,37 @@ class LLM
     /**
      * Send a chat request to the OpenAI API
      *
-     * @param string $string
-     * @param string $model
-     * @return string
+     * @param string|array $query User query or array of messages
+     * @param string $model Model to use
+     * @param float $temperature Temperature for randomness
+     * @return array Response from AI service
+     * @throws LocalizedException
      */
     public function LLM($query, $model = 'gpt-5-nano', $temperature = 1): array
     {
-        $messages = [];
-        if(is_array($query)){
-            $messages = $query;
+        $messageString = '';
+        $previousMessages = [];
+        
+        if (is_array($query)) {
+            // If query is array of messages, extract the last user message
+            $previousMessages = $query;
+            foreach (array_reverse($query) as $msg) {
+                if (isset($msg['role']) && $msg['role'] === 'user' && isset($msg['content'])) {
+                    $messageString = $msg['content'];
+                    break;
+                }
+            }
         } else {
-            $messages[] = [
-                'role' => 'user',
-                'content' => $query
-            ];
+            // If query is a string, use it as the message
+            $messageString = (string)$query;
         }
 
-        $result = $this->aiService->sendChatRequest($messages, $model, $this->getApiKey(), $temperature);
+        $result = $this->aiService->sendChatRequest(
+            $messageString,
+            $previousMessages,
+            2000,
+            $temperature
+        );
         return $result;
     }
 

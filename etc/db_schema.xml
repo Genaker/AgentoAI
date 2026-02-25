@@ -6,7 +6,7 @@
                 comment="Conversation ID"/>
         <column xsi:type="varchar" name="customer_email" nullable="true" length="255" comment="Customer Email"/>
         <column xsi:type="text" name="conversation_data" nullable="true" comment="Conversation JSON Data"/>
-        <column xsi:type="varchar" name="status" nullable="false" length="20" default="active" 
+        <column xsi:type="varchar" name="status" nullable="false" length="20" default="active"
                 comment="Conversation Status"/>
         <column xsi:type="timestamp" name="started_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP"
                 comment="Conversation Started At"/>
@@ -27,6 +27,28 @@
         </index>
         <index referenceId="CHATBOT_CONVERSATIONS_STORE_ID" indexType="btree">
             <column name="store_id"/>
+        </index>
+    </table>
+    <table name="chatbot_messages" resource="default" engine="innodb" comment="Chatbot Messages">
+        <column xsi:type="int" name="message_id" padding="10" unsigned="true" nullable="false" identity="true"
+                comment="Message ID"/>
+        <column xsi:type="int" name="conversation_id" padding="10" unsigned="true" nullable="false"
+                comment="Conversation ID"/>
+        <column xsi:type="smallint" name="is_from_customer" padding="5" unsigned="true" nullable="false" default="1"
+                comment="Is From Customer"/>
+        <column xsi:type="text" name="message_content" nullable="false" comment="Message Content"/>
+        <column xsi:type="timestamp" name="created_at" on_update="false" nullable="false" default="CURRENT_TIMESTAMP"
+                comment="Created At"/>
+        <column xsi:type="int" name="tokens_used" padding="10" unsigned="true" nullable="true"
+                comment="Tokens Used"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="message_id"/>
+        </constraint>
+        <constraint xsi:type="foreign" referenceId="CHATBOT_MESSAGES_CONVERSATION_ID_CHATBOT_CONVERSATIONS_CONVERSATION_ID"
+                    table="chatbot_messages" column="conversation_id"
+                    referenceTable="chatbot_conversations" referenceColumn="conversation_id" onDelete="CASCADE"/>
+        <index referenceId="CHATBOT_MESSAGES_CONVERSATION_ID" indexType="btree">
+            <column name="conversation_id"/>
         </index>
     </table>
 </schema>

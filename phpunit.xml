@@ -1,0 +1,54 @@
+
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.5/phpunit.xsd"
+         bootstrap="Test/Bootstrap.php"
+         cacheResultFile=".phpunit.result.cache"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTestsThatDoNotTestAnything="false"
+         beStrictAboutTestSize="true"
+         beStrictAboutResourceUsageDuringSmallTests="true"
+         failOnRisky="true"
+         failOnWarning="true"
+         colors="true"
+         verbose="true"
+         stopOnFailure="false">
+
+    <testsuites>
+        <testsuite name="Unit Tests">
+            <directory>Test/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration Tests">
+            <directory>Test/Integration</directory>
+        </testsuite>
+    </testsuites>
+
+    <coverage processUncoveredFiles="true"
+              pathCoverage="false"
+              ignoreDeprecatedCodeUnitsFromCodeCoverage="true">
+        <include>
+            <directory suffix=".php">Model</directory>
+            <directory suffix=".php">Service</directory>
+        </include>
+        <exclude>
+            <directory>Test</directory>
+            <directory>view</directory>
+            <directory>etc</directory>
+        </exclude>
+    </coverage>
+
+    <groups>
+        <exclude>
+            <group>openai-api</group>
+        </exclude>
+    </groups>
+
+    <php>
+        <!-- Set API domain for tests (optional) -->
+        <env name="OPENAI_API_DOMAIN" value="https://api.openai.com" forceCoversAnnotationRequired="false"/>
+        
+        <!-- Display deprecation notices -->
+        <ini name="error_reporting" value="-1"/>
+        <ini name="display_errors" value="1"/>
+        <ini name="log_errors" value="1"/>
+    </php>
+</phpunit>
