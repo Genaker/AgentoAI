@@ -6,6 +6,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Genaker\MagentoMcpAi\Service\LLM;
+use Psr\Log\LoggerInterface;
 
 /**
  * Integration tests for LLM Service
@@ -23,6 +24,11 @@ class LLMIntegrationTest extends TestCase
     private $aiService;
 
     /**
+     * @var LoggerInterface
+     */
+    private $logger;
+
+    /**
      * @var LLM
      */
     private $llmService;
@@ -31,7 +37,8 @@ class LLMIntegrationTest extends TestCase
     {
         $this->scopeConfig = $this->createStub(ScopeConfigInterface::class);
         $this->aiService = $this->createStub(AIServiceInterface::class);
-        $this->llmService = new LLM($this->scopeConfig, $this->aiService);
+        $this->logger = $this->createStub(LoggerInterface::class);
+        $this->llmService = new LLM($this->scopeConfig, $this->aiService, $this->logger);
     }
 
     /**
@@ -286,7 +293,7 @@ class LLMIntegrationTest extends TestCase
         
         // Create a mock instead of stub to track expectations properly
         $aiServiceMock = $this->createMock(AIServiceInterface::class);
-        $llmService = new LLM($this->scopeConfig, $aiServiceMock);
+        $llmService = new LLM($this->scopeConfig, $aiServiceMock, $this->logger);
         
         // Track temperatures that were actually passed
         $actualTemperatures = [];

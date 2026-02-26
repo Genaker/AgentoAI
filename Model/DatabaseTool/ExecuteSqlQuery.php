@@ -10,6 +10,9 @@ use Magento\Framework\Exception\LocalizedException;
  */
 class ExecuteSqlQuery implements DatabaseToolInterface
 {
+    /** Valid SHOW subcommands (MySQL/MariaDB) */
+    private const SHOW_VALID = 'TABLES|COLUMNS|CREATE|INDEX|INDEXES|STATUS|VARIABLES|DATABASES|DATABASE|ENGINES|GRANTS|PROCESSLIST|TRIGGERS|WARNINGS|ERRORS|TABLE\s+STATUS|FULL\s+COLUMNS';
+
     /**
      * @var ResourceConnection
      */
@@ -33,7 +36,8 @@ class ExecuteSqlQuery implements DatabaseToolInterface
      */
     public function getDescription(): string
     {
-        return 'Execute a SQL query against the Magento database. Supports SELECT, DESCRIBE, SHOW queries. Write operations (INSERT, UPDATE, DELETE) require dangerous mode.';
+        return 'Execute a single SQL statement against the Magento database. '
+            . 'Pass ONLY the SQL (SELECT, DESCRIBE, SHOW). Do NOT pass explanations, examples, or documentation.';
     }
 
     /**
@@ -46,7 +50,7 @@ class ExecuteSqlQuery implements DatabaseToolInterface
             'properties' => [
                 'query' => [
                     'type' => 'string',
-                    'description' => 'The SQL query to execute (SELECT, DESCRIBE, SHOW, etc.)'
+                    'description' => 'Exactly one SQL statement starting with SELECT, DESCRIBE, or SHOW. No explanations or examples.'
                 ],
                 'reason' => [
                     'type' => 'string',
@@ -66,6 +70,37 @@ class ExecuteSqlQuery implements DatabaseToolInterface
         
         if (empty($sqlQuery)) {
             throw new LocalizedException(__('SQL query is required'));
+        }
+
+        // Reject non-SQL input; if SQL is embedded in text, extract it
+        $trimmed = trim($sqlQuery);
+        if (preg_match('/^show\s+\d/i', $trimmed)) {
+            return [
+                'success' => false,
+                'error' => 'Not a valid SQL statement. "show" must be followed by TABLES, COLUMNS, etc.—not numbers or descriptions.',
+            ];
+        }
+        $looksLikeSql = (bool) preg_match('/^(SELECT|DESCRIBE|DESC|EXPLAIN)\s/i', $trimmed)
+            || preg_match('/^SHOW\s+(' . self::SHOW_VALID . ')\b/i', $trimmed)
+            || preg_match('/^(INSERT|UPDATE|DELETE|DROP)\s/i', $trimmed);
+        $looksLikeDoc = (bool) preg_match(
+            '/\b(Option [AB]|Example SQL|What you|Notes? and|columns? returned|per-customer|Sort by|Filter by|A subset|several with|total revenue)\b|'
+            . '\n\s*\d+\)\s|\d+\s+order|\bshow\s+\d/i',
+            $sqlQuery
+        );
+
+        if (!$looksLikeSql || $looksLikeDoc) {
+            $extracted = $this->extractSqlFromText($sqlQuery, $allowDangerous);
+            if ($extracted !== null) {
+                $sqlQuery = $extracted;
+            } else {
+                return [
+                    'success' => false,
+                    'error' => 'Not a valid SQL statement. The query parameter must start with SELECT, DESCRIBE, or SHOW. '
+                        . 'You passed explanations or data—do not use execute_sql_query for that. '
+                        . 'Respond to the user in natural language instead. Do not call this tool again.',
+                ];
+            }
         }
 
         // Strip trailing semicolon — Magento DB adapter rejects it as "multiple queries"
@@ -93,8 +128,35 @@ class ExecuteSqlQuery implements DatabaseToolInterface
                 'preview' => $this->formatResults($results)
             ];
         } catch (\Exception $e) {
-            throw new LocalizedException(__('Query execution failed: %1', $e->getMessage()));
+            $msg = $e->getMessage();
+            return [
+                'success' => false,
+                'error' => $msg . ' Fix the query (use describe_table to verify column names) and try again.',
+            ];
         }
+    }
+
+    /**
+     * Extract first SQL statement from text that may contain explanations/examples.
+     */
+    private function extractSqlFromText(string $text, bool $allowDangerous): ?string
+    {
+        $keywords = ['SELECT', 'DESCRIBE', 'DESC', 'SHOW', 'EXPLAIN'];
+        if ($allowDangerous) {
+            $keywords = array_merge($keywords, ['INSERT', 'UPDATE', 'DELETE']);
+        }
+        // Match from SQL keyword until ; or \n\n (next section) or end
+        if (preg_match('/\b(' . implode('|', $keywords) . ')\s+[\s\S]+?(?=;|\n\n|$)/i', $text, $m)) {
+            $sql = trim($m[0], " \t\n\r;");
+            $rejectPattern = '/\b(Option [AB]|Example SQL|What you|per-customer|Sort by|Filter by|A subset|several with|total revenue)\b|\n\s*\d+\)\s|\d+\s+order|\bshow\s+\d/i';
+            if (strlen($sql) <= 2000 && !preg_match($rejectPattern, $sql)) {
+                if (preg_match('/^SHOW\s/i', $sql) && !preg_match('/^SHOW\s+(' . self::SHOW_VALID . ')\b/i', $sql)) {
+                    return null;
+                }
+                return $sql;
+            }
+        }
+        return null;
     }
 
     /**

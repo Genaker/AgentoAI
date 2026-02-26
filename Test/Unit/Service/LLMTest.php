@@ -6,6 +6,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Genaker\MagentoMcpAi\Service\LLM;
+use Psr\Log\LoggerInterface;
 
 class LLMTest extends TestCase
 {
@@ -20,6 +21,11 @@ class LLMTest extends TestCase
     private $aiService;
 
     /**
+     * @var LoggerInterface|\PHPUnit\Framework\MockObject\MockObject
+     */
+    private $logger;
+
+    /**
      * @var LLM
      */
     private $llmService;
@@ -28,7 +34,8 @@ class LLMTest extends TestCase
     {
         $this->scopeConfig = $this->createMock(ScopeConfigInterface::class);
         $this->aiService = $this->createMock(AIServiceInterface::class);
-        $this->llmService = new LLM($this->scopeConfig, $this->aiService);
+        $this->logger = $this->createMock(LoggerInterface::class);
+        $this->llmService = new LLM($this->scopeConfig, $this->aiService, $this->logger);
     }
 
     /**
@@ -65,7 +72,8 @@ class LLMTest extends TestCase
         // Fresh instance because getApiKey caches
         $scopeConfig = $this->createMock(ScopeConfigInterface::class);
         $aiService = $this->createMock(AIServiceInterface::class);
-        $llmService = new LLM($scopeConfig, $aiService);
+        $logger = $this->createMock(LoggerInterface::class);
+        $llmService = new LLM($scopeConfig, $aiService, $logger);
 
         $scopeConfig->method('getValue')->willReturn(null);
 
@@ -224,7 +232,8 @@ class LLMTest extends TestCase
             // Fresh instance for each temperature test
             $scopeConfig = $this->createMock(ScopeConfigInterface::class);
             $aiService = $this->createMock(AIServiceInterface::class);
-            $llmService = new LLM($scopeConfig, $aiService);
+            $logger = $this->createMock(LoggerInterface::class);
+            $llmService = new LLM($scopeConfig, $aiService, $logger);
 
             $scopeConfig->method('getValue')->willReturn($apiKey);
             $aiService->expects($this->once())

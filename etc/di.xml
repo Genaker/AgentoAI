@@ -12,7 +12,7 @@
     <!-- Logger Configuration -->
     <virtualType name="Genaker\MagentoMcpAi\Logger\Handler" type="Magento\Framework\Logger\Handler\Base">
         <arguments>
-            <argument name="fileName" xsi:type="string">/var/log/magento2/mcpai.log</argument>
+            <argument name="fileName" xsi:type="string">var/mcpai.log</argument>
         </arguments>
     </virtualType>
     
@@ -56,6 +56,13 @@
     <!-- AI Service Interface - Use MgentoAIService Implementation -->
     <preference for="Genaker\MagentoMcpAi\Api\Service\AIServiceInterface" type="Genaker\MagentoMcpAi\Model\Service\MgentoAIService" />
 
+    <!-- LLM Service - uses MCP AI logger for error analysis -->
+    <type name="Genaker\MagentoMcpAi\Service\LLM">
+        <arguments>
+            <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
+        </arguments>
+    </type>
+
     <!-- Generic AI Service Configuration (wrapper around MultiLLMService) -->
     <type name="Genaker\MagentoMcpAi\Model\Service\MgentoAIService">
         <arguments>
@@ -76,6 +83,7 @@
     <type name="Genaker\MagentoMcpAi\Console\Command\LlmAnalyzer">
         <arguments>
             <argument name="userInteractionContext" xsi:type="object">Genaker\MagentoMcpAi\Model\Service\UserInteractionContext</argument>
+            <argument name="mcpRegistry" xsi:type="object">Genaker\MagentoMcpAi\Model\Mcp\Registry</argument>
         </arguments>
     </type>
 
@@ -85,6 +93,7 @@
             <argument name="aiService" xsi:type="object">Genaker\MagentoMcpAi\Api\Service\AIServiceInterface</argument>
             <argument name="toolRegistry" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\Registry</argument>
             <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
+            <argument name="mcpRegistry" xsi:type="object">Genaker\MagentoMcpAi\Model\Mcp\Registry</argument>
         </arguments>
     </type>
 
@@ -96,6 +105,7 @@
             <argument name="tools" xsi:type="array">
                 <!-- Default tools - can be extended by other modules -->
                 <item name="execute_sql_query" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\ExecuteSqlQuery</item>
+                <item name="list_tables" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\ListTablesTool</item>
                 <item name="describe_table" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\DescribeTable</item>
                 <item name="grep_files" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\GrepTool</item>
                 <item name="read_file" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\ReadFileTool</item>
@@ -104,6 +114,13 @@
                 <item name="run_magento_cli" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\RunMagentoCli</item>
                 <item name="ask_user" xsi:type="object">Genaker\MagentoMcpAi\Model\DatabaseTool\AskUserTool</item>
             </argument>
+        </arguments>
+    </type>
+
+    <!-- Discovery Tool: List Tables -->
+    <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\ListTablesTool">
+        <arguments>
+            <argument name="resourceConnection" xsi:type="object">Magento\Framework\App\ResourceConnection</argument>
         </arguments>
     </type>
 
@@ -158,6 +175,58 @@
     <type name="Genaker\MagentoMcpAi\Model\DatabaseTool\AskUserTool">
         <arguments>
             <argument name="context" xsi:type="object">Genaker\MagentoMcpAi\Model\Service\UserInteractionContext</argument>
+        </arguments>
+    </type>
+
+    <!-- =========================================================================
+         MCP Server Registry
+         =========================================================================
+         The servers array is empty by default. Register MCP servers by creating
+         a virtualType of StdioMcpServer and adding it here.
+
+         Example — add this to your own di.xml (or uncomment here):
+
+         <virtualType name="MyFilesystemMcpServer"
+                      type="Genaker\MagentoMcpAi\Model\Mcp\Server\StdioMcpServer">
+             <arguments>
+                 <argument name="name"    xsi:type="string">filesystem</argument>
+                 <argument name="command" xsi:type="string">
+                     npx -y @modelcontextprotocol/server-filesystem /var/www/html/pub
+                 </argument>
+             </arguments>
+         </virtualType>
+
+         <type name="Genaker\MagentoMcpAi\Model\Mcp\Registry">
+             <arguments>
+                 <argument name="servers" xsi:type="array">
+                     <item name="filesystem" xsi:type="object">MyFilesystemMcpServer</item>
+                 </argument>
+             </arguments>
+         </type>
+
+         MCP tools will appear to the LLM as: mcp__{serverName}__{toolName}
+         e.g. mcp__filesystem__read_file, mcp__filesystem__write_file
+         ========================================================================= -->
+    <type name="Genaker\MagentoMcpAi\Model\Mcp\Registry">
+        <arguments>
+            <argument name="servers" xsi:type="array">
+                <!-- MockDataMcpServer: built-in test/demo server — returns static data.
+                     Tools: mcp__mock__get_store_summary, mcp__mock__get_top_products, mcp__mock__echo_input
+                     Remove this item (or comment out) to disable it in production. -->
+                <item name="mock" xsi:type="object">Genaker\MagentoMcpAi\Model\Mcp\Server\MockDataMcpServer</item>
+
+                <!-- Add real MCP servers here as virtualType entries. Example:
+                <item name="filesystem" xsi:type="object">MyFilesystemMcpServer</item>
+                -->
+            </argument>
+            <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
+        </arguments>
+    </type>
+
+    <!-- StdioMcpServer requires a logger — wire it here so subclass constructors get the MCP AI logger -->
+    <type name="Genaker\MagentoMcpAi\Model\Mcp\Server\StdioMcpServer">
+        <arguments>
+            <argument name="logger" xsi:type="object">Genaker\MagentoMcpAi\Logger\Logger</argument>
         </arguments>
     </type>
 

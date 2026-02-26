@@ -245,4 +245,154 @@ class CliChatWithToolsServiceTest extends TestCase
         $this->assertEquals('error', $result['status']);
         $this->assertStringContainsString('nonexistent_tool', $result['message']);
     }
+
+    // -------------------------------------------------------------------------
+    // Self-correction inner monologue
+    // -------------------------------------------------------------------------
+
+    public function testSelfCorrectionTriggeredOnToolError(): void
+    {
+        // First AI call returns a native tool call; second (self-correction) returns reasoning.
+        $this->aiService
+            ->expects($this->exactly(2))
+            ->method('sendChatRequest')
+            ->willReturnOnConsecutiveCalls(
+                [
+                    'message'    => '',
+                    'tool_calls' => [['name' => 'execute_sql_query', 'arguments' => ['query' => 'SELECT * FROM bad_table', 'reason' => 'test']]],
+                ],
+                [
+                    'message'    => 'The table bad_table does not exist. Use describe_table first.',
+                    'tool_calls' => null,
+                ]
+            );
+
+        $mockTool = $this->createMock(DatabaseToolInterface::class);
+        $mockTool->method('execute')->willReturn(['success' => false, 'error' => 'Table not found: bad_table']);
+
+        $this->toolRegistry->method('getTool')->willReturn($mockTool);
+
+        $result = $this->service->processQueryWithTools('show me orders', [], [['type' => 'function', 'function' => ['name' => 'execute_sql_query']]]);
+
+        $this->assertEquals('tool_called', $result['status']);
+
+        // Self-correction message must appear in history
+        $corrections = array_filter(
+            $result['conversation_history'],
+            fn($m) => $m['role'] === 'assistant' && str_contains($m['content'], '[Self-correction]')
+        );
+        $this->assertNotEmpty($corrections, 'Self-correction message not found in conversation history');
+        $this->assertStringContainsString(
+            'bad_table does not exist',
+            array_values($corrections)[0]['content']
+        );
+    }
+
+    public function testSelfCorrectionNotTriggeredOnSuccessfulToolResult(): void
+    {
+        // Only one AI call should happen — no self-correction on success
+        $this->aiService
+            ->expects($this->once())
+            ->method('sendChatRequest')
+            ->willReturn([
+                'message'    => '',
+                'tool_calls' => [['name' => 'execute_sql_query', 'arguments' => ['query' => 'SELECT 1', 'reason' => 'test']]],
+            ]);
+
+        $mockTool = $this->createMock(DatabaseToolInterface::class);
+        $mockTool->method('execute')->willReturn(['success' => true, 'result' => 'data', 'preview' => 'data', 'row_count' => 1]);
+
+        $this->toolRegistry->method('getTool')->willReturn($mockTool);
+
+        $result = $this->service->processQueryWithTools('query', [], []);
+
+        // No self-correction entry in history
+        $corrections = array_filter(
+            $result['conversation_history'],
+            fn($m) => $m['role'] === 'assistant' && str_contains($m['content'], '[Self-correction]')
+        );
+        $this->assertEmpty($corrections);
+    }
+
+    public function testSelfCorrectionSkippedWhenDisabled(): void
+    {
+        // With self-correction disabled, only one AI call for a tool error
+        $this->aiService
+            ->expects($this->once())
+            ->method('sendChatRequest')
+            ->willReturn([
+                'message'    => '',
+                'tool_calls' => [['name' => 'execute_sql_query', 'arguments' => ['query' => 'SELECT 1', 'reason' => 'test']]],
+            ]);
+
+        $mockTool = $this->createMock(DatabaseToolInterface::class);
+        $mockTool->method('execute')->willReturn(['success' => false, 'error' => 'Some error']);
+
+        $this->toolRegistry->method('getTool')->willReturn($mockTool);
+
+        $this->service->setSelfCorrectionEnabled(false);
+        $result = $this->service->processQueryWithTools('query', [], []);
+
+        $this->assertEquals('tool_called', $result['status']);
+
+        // No self-correction should appear in history
+        $corrections = array_filter(
+            $result['conversation_history'],
+            fn($m) => $m['role'] === 'assistant' && str_contains($m['content'], '[Self-correction]')
+        );
+        $this->assertEmpty($corrections);
+    }
+
+    public function testSelfCorrectionTriggeredOnErrorKeyPresent(): void
+    {
+        // 'error' key alone (without 'success' key) should also trigger self-correction
+        $this->aiService
+            ->expects($this->exactly(2))
+            ->method('sendChatRequest')
+            ->willReturnOnConsecutiveCalls(
+                ['message' => '', 'tool_calls' => [['name' => 'execute_sql_query', 'arguments' => ['query' => 'BAD SQL', 'reason' => 'test']]]],
+                ['message' => 'SQL syntax is invalid. Fix the query.', 'tool_calls' => null]
+            );
+
+        $mockTool = $this->createMock(DatabaseToolInterface::class);
+        $mockTool->method('execute')->willReturn(['error' => 'Syntax error near BAD']);
+
+        $this->toolRegistry->method('getTool')->willReturn($mockTool);
+
+        $result = $this->service->processQueryWithTools('query', [], []);
+
+        $corrections = array_filter(
+            $result['conversation_history'],
+            fn($m) => $m['role'] === 'assistant' && str_contains($m['content'], '[Self-correction]')
+        );
+        $this->assertNotEmpty($corrections);
+    }
+
+    public function testSelfCorrectionGracefulWhenAICallFails(): void
+    {
+        // Self-correction API call throws — should not propagate; tool_called still returned
+        $this->aiService
+            ->expects($this->exactly(2))
+            ->method('sendChatRequest')
+            ->willReturnOnConsecutiveCalls(
+                ['message' => '', 'tool_calls' => [['name' => 'execute_sql_query', 'arguments' => ['query' => 'SELECT 1', 'reason' => 'test']]]],
+                $this->throwException(new \Exception('Timeout'))
+            );
+
+        $mockTool = $this->createMock(DatabaseToolInterface::class);
+        $mockTool->method('execute')->willReturn(['success' => false, 'error' => 'DB error']);
+
+        $this->toolRegistry->method('getTool')->willReturn($mockTool);
+
+        // Should not throw
+        $result = $this->service->processQueryWithTools('query', [], []);
+        $this->assertEquals('tool_called', $result['status']);
+
+        // No self-correction entry (it failed silently)
+        $corrections = array_filter(
+            $result['conversation_history'],
+            fn($m) => $m['role'] === 'assistant' && str_contains($m['content'], '[Self-correction]')
+        );
+        $this->assertEmpty($corrections);
+    }
 }

@@ -14,6 +14,7 @@ use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Store\Model\ScopeInterface;
 use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
 use Genaker\MagentoMcpAi\Model\DatabaseTool\Registry as ToolRegistry;
+use Genaker\MagentoMcpAi\Model\Mcp\Registry as McpRegistry;
 use Genaker\MagentoMcpAi\Model\Service\CliChatWithToolsService;
 use Genaker\MagentoMcpAi\Model\Service\UserInteractionContext;
 
@@ -36,6 +37,11 @@ class LlmAnalyzer extends Command
      * @var ToolRegistry
      */
     private $toolRegistry;
+
+    /**
+     * @var McpRegistry
+     */
+    private $mcpRegistry;
 
     /**
      * @var CliChatWithToolsService
@@ -62,13 +68,19 @@ class LlmAnalyzer extends Command
      */
     private $isAnalyzeMode = false;
 
+    /**
+     * @var string[] Parsed options from last AI message (for expanding "1", "2" etc)
+     */
+    private $lastParsedOptions = [];
+
     public function __construct(
         ResourceConnection $resourceConnection,
         AIServiceInterface $aiService,
         ToolRegistry $toolRegistry,
         CliChatWithToolsService $cliChatService,
         ScopeConfigInterface $scopeConfig,
-        UserInteractionContext $userInteractionContext
+        UserInteractionContext $userInteractionContext,
+        McpRegistry $mcpRegistry = null
     ) {
         parent::__construct();
         $this->resourceConnection = $resourceConnection;
@@ -77,6 +89,7 @@ class LlmAnalyzer extends Command
         $this->cliChatService = $cliChatService;
         $this->scopeConfig = $scopeConfig;
         $this->userInteractionContext = $userInteractionContext;
+        $this->mcpRegistry = $mcpRegistry;
     }
 
     protected function configure()
@@ -143,6 +156,21 @@ class LlmAnalyzer extends Command
         $this->userInteractionContext->setAskCallback(
             function (string $question) use ($input, $output, $helper): string {
                 $output->writeln('');
+                $parsed = $this->parseQuestionOptions($question);
+                if (count($parsed['options']) >= 2) {
+                    $output->writeln('<question> AI asks: ' . $parsed['preamble'] . ' </question>');
+                    foreach ($parsed['options'] as $i => $opt) {
+                        $output->writeln('  <info>' . ($i + 1) . ')</info> ' . trim($opt));
+                    }
+                    $output->writeln('');
+                    $q = new Question('<fg=cyan>Your answer (1-' . count($parsed['options']) . ') or type freely: </>');
+                    $answer = (string)($helper->ask($input, $output, $q) ?? '');
+                    $num = trim($answer);
+                    if (preg_match('/^\d+$/', $num) && (int)$num >= 1 && (int)$num <= count($parsed['options'])) {
+                        return trim($parsed['options'][(int)$num - 1]);
+                    }
+                    return $answer;
+                }
                 $output->writeln('<question> AI asks: ' . $question . ' </question>');
                 $q = new Question('<fg=cyan>Your answer: </>');
                 return (string)($helper->ask($input, $output, $q) ?? '');
@@ -163,7 +191,7 @@ class LlmAnalyzer extends Command
             $output->writeln('<comment>Type answers when asked. Ctrl+C to abort.</comment>');
             $output->writeln('');
 
-            $tools               = $this->toolRegistry->getToolsForAI($this->allowDangerous);
+            $tools               = $this->getMergedTools();
             $conversationHistory = [];
             $analysisPrompt      = $this->buildAnalysisPrompt($focus);
 
@@ -198,7 +226,7 @@ class LlmAnalyzer extends Command
 
         $helper = new QuestionHelper();
         $conversationHistory = [];
-        $tools = $this->toolRegistry->getToolsForAI($this->allowDangerous);
+        $tools = $this->getMergedTools();
 
         while (true) {
             try {
@@ -216,15 +244,27 @@ class LlmAnalyzer extends Command
                 // Clear history locally (no AI call)
                 if (in_array(strtolower(trim($userQuery)), ['clear', 'clean'])) {
                     $conversationHistory = [];
+                    $this->lastParsedOptions = [];
                     $output->writeln('<info>History cleared.</info>');
                     $output->writeln('');
                     continue;
                 }
 
+                // Expand "1", "2" etc to full option text when previous AI message had options
+                $queryToSend = $userQuery;
+                if (preg_match('/^\s*(\d+)\s*$/', trim($userQuery), $m)
+                    && !empty($this->lastParsedOptions)
+                    && (int)$m[1] >= 1
+                    && (int)$m[1] <= count($this->lastParsedOptions)
+                ) {
+                    $selected = $this->lastParsedOptions[(int)$m[1] - 1];
+                    $queryToSend = "I select option " . $m[1] . ": " . $selected;
+                }
+
                 $output->writeln(''); // Empty line for readability
 
                 // Process the query using service
-                $result = $this->processQueryWithService($output, $userQuery, $conversationHistory, $tools, true);
+                $result = $this->processQueryWithService($output, $queryToSend, $conversationHistory, $tools, true);
                 
                 // Check if there was an error
                 if ($result['status'] === 'error') {
@@ -255,9 +295,9 @@ class LlmAnalyzer extends Command
     protected function processQuery(OutputInterface $output, string $userQuery): int
     {
         try {
-            $tools = $this->toolRegistry->getToolsForAI($this->allowDangerous);
+            $tools = $this->getMergedTools();
             $conversationHistory = [];
-            
+
             $result = $this->processQueryWithService($output, $userQuery, $conversationHistory, $tools, false);
             
             if ($result['status'] === 'error') {
@@ -290,6 +330,8 @@ class LlmAnalyzer extends Command
         // Reflection / infinite-loop guard
         $consecutiveToolCalls = 0;
         $lastToolSignature    = '';
+        // Session totals (tokens + cost across all requests in loop)
+        $sessionTotals = ['input' => 0, 'output' => 0, 'total' => 0, 'cost' => 0.0, 'calls' => 0];
 
         while ($iteration < $maxIterations) {
             $iteration++;
@@ -326,6 +368,8 @@ class LlmAnalyzer extends Command
             // Debug response if available
             if (isset($result['response'])) {
                 $this->debugAiResponse($output, $result['response']);
+                $this->accumulateSessionTotals($result['response'], $sessionTotals);
+                $this->debugSessionTotals($output, $sessionTotals);
             }
             
             if ($result['status'] === 'tool_called') {
@@ -336,6 +380,9 @@ class LlmAnalyzer extends Command
                 $this->debug($output, "Tool call detected: $functionName", OutputInterface::VERBOSITY_VERBOSE);
                 if ($output->getVerbosity() >= OutputInterface::VERBOSITY_VERY_VERBOSE) {
                     $this->debug($output, 'Tool arguments: ' . json_encode($result['tool_arguments']), OutputInterface::VERBOSITY_VERY_VERBOSE);
+                    if ($functionName === 'execute_sql_query' && isset($result['tool_arguments']['query'])) {
+                        $this->debug($output, 'SQL executed: ' . $result['tool_arguments']['query'], OutputInterface::VERBOSITY_VERY_VERBOSE);
+                    }
                 }
                 
                 if ($isInteractive) {
@@ -403,20 +450,21 @@ class LlmAnalyzer extends Command
                     }
                 } else {
                     $this->debug($output, 'Outputting AI response (length: ' . strlen($aiMessage) . ' chars)', OutputInterface::VERBOSITY_VERBOSE);
+                    $displayText = $this->formatOptionsForDisplay($aiMessage);
                     if ($isInteractive) {
                         $output->writeln('<info>Answer:</info>');
-                        $this->streamOutput($output, $aiMessage);
+                        $this->streamOutput($output, $displayText);
                     } elseif ($this->isAnalyzeMode) {
                         $output->writeln('');
                         $output->writeln('<info>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</info>');
                         $output->writeln('<info>Analysis Report</info>');
                         $output->writeln('<info>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</info>');
                         $output->writeln('');
-                        $output->writeln($aiMessage);
+                        $output->writeln($displayText);
                         $output->writeln('');
                     } else {
                         $output->writeln('<info>Answer:</info>');
-                        $output->writeln($aiMessage);
+                        $output->writeln($displayText);
                     }
                 }
 
@@ -431,10 +479,12 @@ class LlmAnalyzer extends Command
         $output->writeln('<warning>Maximum iterations reached. Generating final answer from gathered data...</warning>');
         $this->debug($output, "Reached max iterations ($maxIterations). Forcing final answer.", OutputInterface::VERBOSITY_VERBOSE);
 
-        $forcedQuery  = "You have reached the iteration limit. Based on ALL information gathered "
-            . "in this conversation, provide the best possible answer to the original question: "
-            . $userQuery
-            . "\nBe concise but complete. Do NOT call any more tools.";
+        $forcedQuery  = "The iteration limit ($maxIterations tool calls) was reached. You MUST respond with:\n"
+            . " Your best answer from the data gathered so far (or 'No data gathered yet' if none).\n"
+            . " A brief explanation: 'The iteration limit was reached before completion.'\n"
+            . " Ask the user to continue: suggest they refine the question or break it into smaller steps.\n"
+            . "Original question: " . $userQuery . "\n"
+            . "Do NOT call any more tools. Be concise.";
         $forcedResult = $this->cliChatService->processQueryWithTools(
             $forcedQuery,
             $conversationHistory,
@@ -442,24 +492,34 @@ class LlmAnalyzer extends Command
         );
 
         if ($forcedResult['status'] === 'success' && !empty($forcedResult['message'])) {
+            if (isset($forcedResult['response'])) {
+                $this->accumulateSessionTotals($forcedResult['response'], $sessionTotals);
+                $this->debugSessionTotals($output, $sessionTotals);
+            }
             $conversationHistory = $forcedResult['conversation_history'];
+            $displayText = $this->formatOptionsForDisplay($forcedResult['message']);
             if ($isInteractive) {
                 $output->writeln('<info>Answer:</info>');
-                $this->streamOutput($output, $forcedResult['message']);
+                $this->streamOutput($output, $displayText);
             } elseif ($this->isAnalyzeMode) {
                 $output->writeln('<info>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</info>');
                 $output->writeln('<info>Analysis Report (iteration limit reached)</info>');
                 $output->writeln('<info>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</info>');
                 $output->writeln('');
-                $output->writeln($forcedResult['message']);
+                $output->writeln($displayText);
                 $output->writeln('');
             } else {
                 $output->writeln('<info>Answer:</info>');
-                $output->writeln($forcedResult['message']);
+                $output->writeln($displayText);
             }
             return $forcedResult;
         }
 
+        // Forced answer failed (empty or error) — explain and ask user to continue
+        $output->writeln('');
+        $output->writeln('<comment>The iteration limit (' . $maxIterations . ') was reached before a complete answer could be generated.</comment>');
+        $output->writeln('<comment>Please try again with a more specific question, or break your request into smaller steps.</comment>');
+        $output->writeln('');
         return ['status' => 'max_iterations', 'message' => 'Maximum iterations reached'];
     }
 
@@ -635,6 +695,9 @@ class LlmAnalyzer extends Command
                 $this->debug($output, "Tool call detected: $functionName", OutputInterface::VERBOSITY_VERBOSE);
                 if ($output->getVerbosity() >= OutputInterface::VERBOSITY_VERY_VERBOSE) {
                     $this->debug($output, 'Tool arguments: ' . json_encode($arguments), OutputInterface::VERBOSITY_VERY_VERBOSE);
+                    if ($functionName === 'execute_sql_query' && isset($arguments['query'])) {
+                        $this->debug($output, 'SQL executed: ' . $arguments['query'], OutputInterface::VERBOSITY_VERY_VERBOSE);
+                    }
                 }
                 
                 if ($isInteractive) {
@@ -706,12 +769,13 @@ class LlmAnalyzer extends Command
                     }
                 } else {
                     $this->debug($output, 'Outputting AI response (length: ' . strlen($aiMessage) . ' chars)', OutputInterface::VERBOSITY_VERBOSE);
+                    $displayText = $this->formatOptionsForDisplay($aiMessage);
                     if ($isInteractive) {
                         $output->writeln('<info>Answer:</info>');
-                        $this->streamOutput($output, $aiMessage);
+                        $this->streamOutput($output, $displayText);
                     } else {
                         $output->writeln('<info>Answer:</info>');
-                        $output->writeln($aiMessage);
+                        $output->writeln($displayText);
                     }
                 }
                 
@@ -1165,9 +1229,138 @@ class LlmAnalyzer extends Command
         }
     }
 
+    /**
+     * Accumulate tokens and cost from a single response into session totals.
+     */
+    protected function accumulateSessionTotals(array $response, array &$sessionTotals): void
+    {
+        $sessionTotals['calls']++;
+        if (isset($response['tokens'])) {
+            $t = $response['tokens'];
+            $sessionTotals['input'] += $t['input'] ?? $t['prompt_tokens'] ?? 0;
+            $sessionTotals['output'] += $t['output'] ?? $t['completion_tokens'] ?? 0;
+            $sessionTotals['total'] += $t['total'] ?? $t['total_tokens'] ?? 0;
+        }
+        if (isset($response['cost'])) {
+            $sessionTotals['cost'] += (float) $response['cost'];
+        }
+    }
+
+    /**
+     * Output session totals (cumulative across all requests in loop).
+     */
+    protected function debugSessionTotals(OutputInterface $output, array $sessionTotals): void
+    {
+        if ($sessionTotals['calls'] > 0) {
+            $this->debug(
+                $output,
+                sprintf(
+                    'Session total - Tokens: Input %d, Output %d, Total %d; Price: $%s; LLM calls: %d',
+                    $sessionTotals['input'],
+                    $sessionTotals['output'],
+                    $sessionTotals['total'],
+                    number_format($sessionTotals['cost'], 6),
+                    $sessionTotals['calls']
+                ),
+                OutputInterface::VERBOSITY_VERBOSE
+            );
+        }
+    }
+
     // =========================================================================
     // Analyze mode helpers (used when --focus is provided)
     // =========================================================================
+
+    /**
+     * Format text for display: convert bullet options (- ) to numbered (1) 2) 3)).
+     * Only adds select hint when preamble looks like a question (would you like, choose, etc.).
+     *
+     * @return string Formatted text for display
+     */
+    private function formatOptionsForDisplay(string $text): string
+    {
+        $parsed = $this->parseQuestionOptions($text);
+        if (count($parsed['options']) < 2) {
+            $this->lastParsedOptions = [];
+            return $text;
+        }
+        $isQuestion = (bool) preg_match(
+            '/\b(would you like|choose|select|which|pick|if you\'d like|or\s*$|want me to)\b/i',
+            $parsed['preamble']
+        );
+        if (!$isQuestion) {
+            $this->lastParsedOptions = [];
+            return $text;
+        }
+        $this->lastParsedOptions = $parsed['options'];
+        $numbered = '';
+        foreach ($parsed['options'] as $i => $opt) {
+            $numbered .= ($i > 0 ? "\n" : '') . ($i + 1) . ') ' . trim($opt);
+        }
+        $n = count($parsed['options']);
+        $hint = "\n\n<comment>(Type 1-{$n} to select, or type your answer)</comment>";
+        return trim($parsed['preamble']) . "\n\n" . $numbered . $hint;
+    }
+
+    /**
+     * Parse options: only from a clear "Response options:" or "Choose:" section to avoid mixing
+     * clarification questions (1) What field...) with selection options (1) Proceed...).
+     *
+     * @return array{preamble: string, options: string[]}
+     */
+    private function parseQuestionOptions(string $question): array
+    {
+        $lines = preg_split('/\r\n|\r|\n/', $question);
+        $preamble = '';
+        $options = [];
+        $inChoiceSection = false;
+
+        foreach ($lines as $line) {
+            if (preg_match('/^\s*(Response options|Choose one?|Pick one?|Please pick|Select):\s*$/i', $line)) {
+                $inChoiceSection = true;
+                $preamble .= ($preamble !== '' ? "\n" : '') . $line;
+                continue;
+            }
+            if ($inChoiceSection) {
+                if (preg_match('/^\s*-\s+(.+)$/', $line, $m)) {
+                    $options[] = $m[1];
+                } elseif (preg_match('/^\s*(\d+)\)\s*(.+)$/', $line, $m)) {
+                    $options[] = $m[2];
+                } elseif (!empty($options) && trim($line) !== '' && preg_match('/^\s{2,}/', $line)) {
+                    $options[array_key_last($options)] .= "\n" . trim($line);
+                } elseif (trim($line) === '' || !preg_match('/^\s*[\d\-]/', $line)) {
+                    $inChoiceSection = false;
+                    if (trim($line) !== '') {
+                        $preamble .= ($preamble !== '' ? "\n" : '') . $line;
+                    }
+                }
+            } else {
+                $preamble .= ($preamble !== '' ? "\n" : '') . $line;
+            }
+        }
+
+        return [
+            'preamble' => trim($preamble),
+            'options'  => array_map('trim', $options),
+        ];
+    }
+
+    /**
+     * Return the merged list of built-in PHP tools and MCP server tools in OpenAI format.
+     */
+    private function getMergedTools(): array
+    {
+        $tools = $this->toolRegistry->getToolsForAI($this->allowDangerous);
+
+        if ($this->mcpRegistry !== null) {
+            $mcpTools = $this->mcpRegistry->getToolsForAI();
+            if (!empty($mcpTools)) {
+                $tools = array_merge($tools, $mcpTools);
+            }
+        }
+
+        return $tools;
+    }
 
     /**
      * Magento-expert system message injected when running in analyze mode.
@@ -1181,12 +1374,14 @@ You are an expert Magento 2 architect and security engineer performing a live in
 
 TOOLS AVAILABLE:
 - get_magento_info: Start here. Returns version, PHP version, module count, DB size, key table counts, invalid indexers.
-- execute_sql_query: Run SQL against the Magento database. Always add LIMIT to SELECT queries.
+- execute_sql_query: Run SQL against the Magento database. Pass ONLY the SQL statement (no explanations). Always add LIMIT to SELECT queries.
 - describe_table: Get a table's column structure before querying it.
 - grep_files: Search files in the Magento codebase for patterns (code, config, credentials).
 - read_file: Read specific files. Paths are relative to Magento root.
 - run_magento_cli: Run safe read-only bin/magento subcommands (indexer:status, cache:status, module:status, cron:status, --version, info:adminuri).
 - ask_user: Ask the operator a clarifying question when you need human input.
+
+When offering choices: use "Response options:" or "Choose one:" followed by 1) 2) 3) 4) etc. When the user selects, proceed—do not ask again. If you have data from a tool, present it—do not ask. Ask only when the request is unclear.
 
 INVESTIGATION APPROACH:
 1. Always start with get_magento_info to establish a baseline.

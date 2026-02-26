@@ -4,9 +4,12 @@ namespace Genaker\MagentoMcpAi\Service;
 use Magento\Framework\App\Config\ScopeConfigInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Genaker\MagentoMcpAi\Api\Service\AIServiceInterface;
+use Psr\Log\LoggerInterface;
 
 class LLM
 {
+    private const LOG_PREFIX = '[MagentoMcpAi]';
+
     /**
      * @var ScopeConfigInterface
      */
@@ -17,14 +20,23 @@ class LLM
     private $aiService;
 
     /**
+     * @var LoggerInterface
+     */
+    private $logger;
+
+    /**
      * @param ScopeConfigInterface $scopeConfig
+     * @param AIServiceInterface $aiService
+     * @param LoggerInterface $logger
      */
     public function __construct(
         ScopeConfigInterface $scopeConfig,
-        AIServiceInterface $aiService
+        AIServiceInterface $aiService,
+        LoggerInterface $logger
     ) {
         $this->scopeConfig = $scopeConfig;
         $this->aiService = $aiService;
+        $this->logger = $logger;
     }
 
     /**
@@ -44,7 +56,10 @@ class LLM
             \Magento\Store\Model\ScopeInterface::SCOPE_STORE
         );
 
-        if(!$this->apiKey ){
+        if (!$this->apiKey) {
+            $this->logger->error(self::LOG_PREFIX . ' API key not configured', [
+                'config_path' => 'magentomcpai/general/api_key',
+            ]);
             throw new LocalizedException(
                 __('OpenAI API key is not set in the admin configuration')
             );
@@ -82,13 +97,24 @@ class LLM
             $messageString = (string)$query;
         }
 
-        $result = $this->aiService->sendChatRequest(
-            $messageString,
-            $previousMessages,
-            2000,
-            $temperature
-        );
-        return $result;
+        try {
+            $result = $this->aiService->sendChatRequest(
+                $messageString,
+                $previousMessages,
+                2000,
+                $temperature
+            );
+            return $result;
+        } catch (\Exception $e) {
+            $this->logger->error(self::LOG_PREFIX . ' LLM request failed', [
+                'error' => $e->getMessage(),
+                'message_preview' => substr($messageString, 0, 200),
+                'messages_count' => count($previousMessages),
+                'exception_class' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 
 }

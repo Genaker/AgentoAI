@@ -253,13 +253,11 @@ class MultiLLMService
                 'provider' => $provider,
                 'model' => $model,
                 'error' => $e->getMessage(),
+                'prompt_length' => strlen($prompt),
+                'exception_class' => get_class($e),
+                'trace' => $e->getTraceAsString(),
             ];
-            
-            if ($isDebugMode) {
-                $errorInfo['trace'] = $e->getTraceAsString();
-            }
-            
-            $this->logger->error("Error querying {$provider}: " . $e->getMessage(), $errorInfo);
+            $this->logger->error('[MagentoMcpAi] Error querying LLM provider', $errorInfo);
             throw new LocalizedException(__("AI service error: %1", $e->getMessage()), $e);
         }
     }

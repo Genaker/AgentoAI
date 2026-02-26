@@ -244,7 +244,8 @@ class MgentoAIService implements AIServiceInterface
                 // Detect ReAct-style tool results in history to use correct framing
                 $hasToolResults = false;
                 foreach ($filteredMessages as $msg) {
-                    if (strpos($msg['content'] ?? '', 'Tool result:') === 0) {
+                    $content = $msg['content'] ?? '';
+                    if (strpos($content, 'Tool result:') === 0 || strpos($content, 'Data received:') === 0) {
                         $hasToolResults = true;
                         break;
                     }
@@ -424,7 +425,15 @@ class MgentoAIService implements AIServiceInterface
             ];
 
         } catch (\Exception $e) {
-            $this->logger->error("AI Chat Request Failed: " . $e->getMessage());
+            $this->logger->error('[MagentoMcpAi] AI Chat Request Failed', [
+                'error' => $e->getMessage(),
+                'provider' => $provider ?? null,
+                'model' => $model ?? null,
+                'message_preview' => substr($message ?? '', 0, 200),
+                'messages_count' => count($messages ?? []),
+                'exception_class' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
             throw new LocalizedException(__("AI service error: %1", $e->getMessage()), $e);
         }
     }

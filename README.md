@@ -69,12 +69,13 @@ bin/magento genaker:agento:llm --focus=security
 bin/magento genaker:agento:llm --focus=all --report=/tmp/audit.txt
 ```
 
-**Available tools:** `get_magento_info`, `execute_sql_query`, `describe_table`, `grep_files`, `read_file`, `run_magento_cli`, `ask_user` (bidirectional — AI can ask the operator questions mid-analysis).
+**Available tools:** `get_magento_info`, `execute_sql_query`, `describe_table`, `grep_files`, `read_file`, `run_magento_cli`, `ask_user` (bidirectional — AI can ask the operator questions mid-analysis), plus any tools from registered **MCP servers** (prefixed `mcp__{server}__{tool}`).
 
 **Documentation:**
-- [MAGENTO_AI_QUERY_ANALYZER.md](MAGENTO_AI_QUERY_ANALYZER.md) — CLI modes, options, analyzer focus, report format
-- [TOOLS_AND_LLM.md](TOOLS_AND_LLM.md) — How tools work with the LLM: ReAct loop, tool call resolution, conversation flow, all tools in detail
-- [DATABASE_TOOLS_DOCUMENTATION.md](DATABASE_TOOLS_DOCUMENTATION.md) — Tool API reference, custom tools, examples
+- [doc/MAGENTO_AI_QUERY_ANALYZER.md](doc/MAGENTO_AI_QUERY_ANALYZER.md) — CLI modes, options, analyzer focus, report format
+- [doc/TOOLS_AND_LLM.md](doc/TOOLS_AND_LLM.md) — How tools work with the LLM: ReAct loop, tool call resolution, conversation flow, all tools in detail
+- [doc/DATABASE_TOOLS_DOCUMENTATION.md](doc/DATABASE_TOOLS_DOCUMENTATION.md) — Tool API reference, custom tools, examples
+- [doc/ADDING_TOOLS.md](doc/ADDING_TOOLS.md) — How to add new tools: step-by-step guide with data flow, DI registration, and unit test examples
 
 ### Tools Overview
 
@@ -88,7 +89,23 @@ bin/magento genaker:agento:llm --focus=all --report=/tmp/audit.txt
 | `run_magento_cli` | Run whitelisted commands: `indexer:status`, `cache:status`, `module:status`, etc. |
 | `ask_user` | Ask the operator a question mid-analysis (interactive only) |
 
-The AI uses a **ReAct** (Reasoning + Acting) loop: it calls tools to gather data, then synthesizes a final answer. See [TOOLS_AND_LLM.md](TOOLS_AND_LLM.md) for the full flow.
+The AI uses a **ReAct** (Reasoning + Acting) loop: it calls tools to gather data, then synthesizes a final answer. See [doc/TOOLS_AND_LLM.md](doc/TOOLS_AND_LLM.md) for the full flow.
+
+### Documentation Index
+
+All technical documentation is in the [`doc/`](doc/) folder:
+
+| File | Description |
+|------|-------------|
+| [MAGENTO_AI_QUERY_ANALYZER.md](doc/MAGENTO_AI_QUERY_ANALYZER.md) | CLI command modes, options, analyzer focus areas, report format |
+| [TOOLS_AND_LLM.md](doc/TOOLS_AND_LLM.md) | How tools integrate with the LLM: ReAct loop, tool call resolution, conversation flow |
+| [DATABASE_TOOLS_DOCUMENTATION.md](doc/DATABASE_TOOLS_DOCUMENTATION.md) | Full tool API reference, custom tool examples |
+| [ADDING_TOOLS.md](doc/ADDING_TOOLS.md) | Step-by-step guide to adding new tools (interface, DI, tests) |
+| [MCP_INTEGRATION.md](doc/MCP_INTEGRATION.md) | MCP server integration: register any MCP server via di.xml, built-in mock server for testing |
+| [EXTENDING_DATABASE_TOOLS.md](doc/EXTENDING_DATABASE_TOOLS.md) | Advanced tool extension patterns |
+| [TEST_SUITE_SUMMARY.md](doc/TEST_SUITE_SUMMARY.md) | Unit test suite overview and coverage |
+| [TEST_README.md](doc/TEST_README.md) | How to run the test suite |
+| [LLM_SERVICE_TESTS.md](doc/LLM_SERVICE_TESTS.md) | LLM service integration test details |
 
 ### 8. Customer Service Chatbot
 - AI-powered customer-facing chatbot for your storefront

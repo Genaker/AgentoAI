@@ -192,6 +192,78 @@ class ExecuteSqlQueryTest extends TestCase
     }
 
     /**
+     * Test execute extracts SQL from mixed content (explanations + SQL)
+     */
+    public function testExecuteExtractsSqlFromMixedContent(): void
+    {
+        $arguments = [
+            'query' => "Here's the query to run:\n\nSELECT COUNT(*) AS cnt FROM customer_entity\n\nThis returns the total customer count.",
+            'reason' => 'Count customers'
+        ];
+
+        $this->connection->expects($this->once())
+            ->method('fetchAll')
+            ->with($this->stringContains('SELECT COUNT(*)'))
+            ->willReturn([['cnt' => 42]]);
+
+        $result = $this->tool->execute($arguments, false);
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals(42, $result['data'][0]['cnt']);
+    }
+
+    /**
+     * Test execute rejects options/choices passed as query
+     */
+    public function testExecuteRejectsOptionsAsQuery(): void
+    {
+        $arguments = [
+            'query' => "Show full per-customer breakdown (27 rows)\n2) Sort by revenue (desc)\n3) Filter by minimum number of orders (specify min)",
+            'reason' => 'Options'
+        ];
+
+        $result = $this->tool->execute($arguments, false);
+
+        $this->assertFalse($result['success']);
+        $this->assertArrayHasKey('error', $result);
+    }
+
+    /**
+     * Test execute returns error (does not run) when no SQL can be extracted
+     */
+    public function testExecuteReturnsErrorForNonSqlInput(): void
+    {
+        $arguments = [
+            'query' => "Here's the concise way to aggregate. Option A: use a JOIN. Option B: use a subquery. No actual SQL here.",
+            'reason' => 'Documentation'
+        ];
+
+        $result = $this->tool->execute($arguments, false);
+
+        $this->assertArrayHasKey('success', $result);
+        $this->assertFalse($result['success']);
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('Not a valid SQL statement', $result['error']);
+    }
+
+    /**
+     * Test execute rejects descriptive text that starts with "show" but is not SQL
+     */
+    public function testExecuteRejectsShowFollowedByNumber(): void
+    {
+        $arguments = [
+            'query' => "show 1 order with 250 total, several with 150).\n- A subset has 2 orders with total revenue around 200 (e.g., multiple customers show 2 orders totaling 200).\nA",
+            'reason' => 'Options'
+        ];
+
+        $result = $this->tool->execute($arguments, false);
+
+        $this->assertFalse($result['success']);
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('Not a valid SQL statement', $result['error']);
+    }
+
+    /**
      * Test execute throws exception when query is missing
      */
     public function testExecuteThrowsExceptionWhenQueryMissing(): void
@@ -242,7 +314,7 @@ class ExecuteSqlQueryTest extends TestCase
     }
 
     /**
-     * Test execute handles database errors
+     * Test execute returns error (does not throw) on database errors so LLM can fix and retry
      */
     public function testExecuteHandlesDatabaseErrors(): void
     {
@@ -255,10 +327,12 @@ class ExecuteSqlQueryTest extends TestCase
             ->method('fetchAll')
             ->willThrowException(new \Exception('Table does not exist'));
 
-        $this->expectException(LocalizedException::class);
-        $this->expectExceptionMessage('Query execution failed');
+        $result = $this->tool->execute($arguments, false);
 
-        $this->tool->execute($arguments, false);
+        $this->assertFalse($result['success']);
+        $this->assertArrayHasKey('error', $result);
+        $this->assertStringContainsString('Table does not exist', $result['error']);
+        $this->assertStringContainsString('Fix the query', $result['error']);
     }
 
     /**
